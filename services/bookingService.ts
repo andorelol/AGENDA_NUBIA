@@ -1,23 +1,12 @@
 import type { Bookings } from '../types';
 
-// --- ARQUITETURA DE DADOS: O DESAFIO DA PERSISTÊNCIA MULTIUSUÁRIO ---
+// Para este aplicativo com fins educacionais, usaremos o `localStorage` do 
+// navegador como nosso banco de dados. Ele permite que os dados persistam
+// (não sejam perdidos) quando a página é recarregada no mesmo navegador.
 //
-// OBJETIVO: Fazer com que os agendamentos sejam salvos e visíveis para QUALQUER
-// usuário que acesse o link, não importa o dispositivo.
-//
-// PROBLEMA: A web, por padrão, não tem um "disco rígido" compartilhado.
-// O `localStorage` é a solução mais próxima, mas funciona como um cofre
-// individual para cada navegador. O agendamento do Usuário A fica salvo no
-// cofre do navegador dele, e o Usuário B não tem acesso.
-//
-// SOLUÇÃO REAL: Para compartilhar dados, precisamos de um servidor central
-// (um banco de dados na nuvem) que todos os usuários possam acessar.
-// Serviços como Firebase (Firestore) ou Supabase são perfeitos para isso.
-//
-// O QUE FAREMOS AQUI: Como não podemos instalar um banco de dados externo
-// neste ambiente, vamos manter o `localStorage` para simular a persistência
-// para um único usuário e adicionar comentários claros mostrando onde o código
-// de um banco de dados real entraria.
+// Limitação: O localStorage é específico para cada navegador e dispositivo. 
+// Agendamentos feitos em um navegador não aparecerão em outro. Para isso,
+// uma API e um banco de dados real (como MongoDB) seriam necessários.
 
 const LOCAL_STORAGE_KEY = 'nubiaAlvesBookings';
 
@@ -29,7 +18,7 @@ function getFormattedDate(date: Date): string {
   return `${year}-${month}-${day}`;
 }
 
-// Dados iniciais - usados apenas se o localStorage estiver vazio
+// Dados iniciais para popular o app na primeira vez que ele é aberto.
 const initialBookings: Bookings = {
   [getFormattedDate(new Date(Date.now() + 86400000 * 2))]: { // Daqui a 2 dias
     "10:30": { clientName: "Ana" },
@@ -40,8 +29,7 @@ const initialBookings: Bookings = {
   }
 };
 
-// --- Lógica de Persistência (Simulada com localStorage) ---
-
+// Carrega os agendamentos do localStorage. Se não houver, usa os dados iniciais.
 const loadBookings = (): Bookings => {
   try {
     const storedData = localStorage.getItem(LOCAL_STORAGE_KEY);
@@ -49,89 +37,73 @@ const loadBookings = (): Bookings => {
       return JSON.parse(storedData);
     }
   } catch (error) {
-    console.error("Falha ao carregar agendamentos do localStorage:", error);
+    console.error("Falha ao carregar dados do localStorage:", error);
   }
-  // Se não houver nada salvo, usa os dados iniciais
+  // Se não houver dados, salva os dados iniciais e os retorna.
   localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(initialBookings));
   return initialBookings;
 };
 
+// Salva o objeto completo de agendamentos no localStorage.
 const persistBookings = (bookingsToSave: Bookings) => {
   try {
     localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(bookingsToSave));
   } catch (error) {
-    console.error("Falha ao salvar agendamentos no localStorage:", error);
+    console.error("Falha ao salvar dados no localStorage:", error);
   }
 };
 
-// --- Implementação do Serviço ---
 
-let bookings: Bookings = loadBookings();
+// --- Implementação do Serviço para o Frontend ---
+
+// "listener" é a função (o `setBookings` do React) que será chamada para atualizar a UI.
 let listener: ((data: Bookings) => void) | null = null;
 
-
-// Simula um listener em tempo real (como o onSnapshot do Firebase)
+/**
+ * Inicia a "escuta" por agendamentos.
+ * A função de callback fornecida será chamada imediatamente com os dados
+ * atuais e sempre que os dados forem atualizados.
+ * @param callback A função para ser chamada com os dados dos agendamentos.
+ * @returns Uma função para parar de escutar (unsubscribe).
+ */
 export function listenToBookings(callback: (data: Bookings) => void): () => void {
   listener = callback;
-  // Envia imediatamente os dados atuais carregados do localStorage
-  listener(bookings);
+  
+  // Envia os dados iniciais para a UI assim que ela começa a escutar.
+  const initialData = loadBookings();
+  listener(initialData);
 
-  // **************************************************************************
-  // NOTA PARA O MUNDO REAL:
-  // Aqui você iniciaria o listener do seu banco de dados. Exemplo com Firebase:
-  //
-  // import { db } from './firebaseConfig';
-  // import { onSnapshot, collection } from 'firebase/firestore';
-  //
-  // const unsubscribe = onSnapshot(collection(db, "bookings"), (snapshot) => {
-  //   const serverBookings = {}; // Mapeia o snapshot para o formato `Bookings`
-  //   snapshot.docs.forEach(doc => { ... });
-  //   listener(serverBookings);
-  // });
-  // return unsubscribe; // Retorna a função para parar de ouvir
-  // **************************************************************************
-
-
-  // Retorna uma função "unsubscribe" para a nossa simulação
+  // Retorna a função "unsubscribe" para limpar o listener quando o componente desmontar.
   return () => {
     listener = null;
   };
 }
 
-// Simula o salvamento de um agendamento no banco de dados
+/**
+ * Salva um novo agendamento, persiste os dados e notifica a UI sobre a mudança.
+ * @param dateString A data no formato 'YYYY-MM-DD'.
+ * @param slot O horário, ex: "09:00".
+ * @param clientName O nome do cliente.
+ */
 export async function saveBooking(dateString: string, slot: string, clientName: string): Promise<void> {
-  // Simula o atraso da rede
+  // Simula um pequeno atraso, como se estivesse salvando em um servidor.
   await new Promise(resolve => setTimeout(resolve, 1000));
-
-  // **************************************************************************
-  // NOTA PARA O MUNDO REAL:
-  // Aqui você faria a chamada para salvar os dados no banco de dados. Exemplo com Firebase:
-  //
-  // import { db } from './firebaseConfig';
-  // import { doc, setDoc } from 'firebase/firestore';
-  //
-  // const bookingRef = doc(db, 'bookings', dateString);
-  // await setDoc(bookingRef, { [slot]: { clientName } }, { merge: true });
-  //
-  // O listener (onSnapshot) se encarregaria de atualizar a UI automaticamente,
-  // então as linhas abaixo não seriam estritamente necessárias.
-  // **************************************************************************
-
-  // Lógica de atualização para nossa simulação com localStorage
-  const updatedBookings = { ...bookings };
-  if (!updatedBookings[dateString]) {
-    updatedBookings[dateString] = {};
-  }
   
-  updatedBookings[dateString][slot] = { clientName };
+  const currentBookings = loadBookings();
+  
+  const updatedBookings = {
+    ...currentBookings,
+    [dateString]: {
+      ...currentBookings[dateString],
+      [slot]: { clientName },
+    },
+  };
 
-  // Atualiza o estado em memória e persiste no localStorage
-  bookings = updatedBookings;
-  persistBookings(bookings);
+  persistBookings(updatedBookings);
 
-  // Notifica o listener da mudança (simulando a reatividade do backend)
+  // Notifica a UI (via listener) que os dados mudaram, para que ela possa re-renderizar.
   if (listener) {
-    listener({ ...bookings });
+    listener(updatedBookings);
   }
 
   console.log(`Agendamento salvo para ${clientName} em ${dateString} às ${slot}`);
