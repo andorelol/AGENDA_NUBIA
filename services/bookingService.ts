@@ -1,12 +1,10 @@
 import type { Bookings } from '../types';
 
-// Para este aplicativo com fins educacionais, usaremos o `localStorage` do 
-// navegador como nosso banco de dados. Ele permite que os dados persistam
-// (não sejam perdidos) quando a página é recarregada no mesmo navegador.
-//
-// Limitação: O localStorage é específico para cada navegador e dispositivo. 
-// Agendamentos feitos em um navegador não aparecerão em outro. Para isso,
-// uma API e um banco de dados real (como MongoDB) seriam necessários.
+// Usaremos o `localStorage` como um "quadro de avisos" compartilhado.
+// A lógica abaixo garante que, quando uma aba atualiza o quadro,
+// todas as outras abas sejam notificadas e atualizem sua visualização.
+// Isso simula um banco de dados em tempo real para múltiplos usuários
+// (desde que estejam usando o mesmo navegador).
 
 const LOCAL_STORAGE_KEY = 'nubiaAlvesBookings';
 
@@ -39,7 +37,6 @@ const loadBookings = (): Bookings => {
   } catch (error) {
     console.error("Falha ao carregar dados do localStorage:", error);
   }
-  // Se não houver dados, salva os dados iniciais e os retorna.
   localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(initialBookings));
   return initialBookings;
 };
@@ -56,37 +53,46 @@ const persistBookings = (bookingsToSave: Bookings) => {
 
 // --- Implementação do Serviço para o Frontend ---
 
-// "listener" é a função (o `setBookings` do React) que será chamada para atualizar a UI.
-let listener: ((data: Bookings) => void) | null = null;
+let listenerCallback: ((data: Bookings) => void) | null = null;
 
 /**
- * Inicia a "escuta" por agendamentos.
- * A função de callback fornecida será chamada imediatamente com os dados
- * atuais e sempre que os dados forem atualizados.
+ * Inicia a escuta por agendamentos, incluindo atualizações de outras abas.
  * @param callback A função para ser chamada com os dados dos agendamentos.
  * @returns Uma função para parar de escutar (unsubscribe).
  */
 export function listenToBookings(callback: (data: Bookings) => void): () => void {
-  listener = callback;
+  listenerCallback = callback;
   
+  // O "sino" que avisa sobre mudanças no "quadro de avisos" (localStorage).
+  // Este evento é disparado em todas as outras abas, exceto a que fez a alteração.
+  const handleStorageChange = (event: StorageEvent) => {
+    if (event.key === LOCAL_STORAGE_KEY && event.newValue && listenerCallback) {
+      console.log('Dados sincronizados de outra aba!');
+      listenerCallback(JSON.parse(event.newValue));
+    }
+  };
+
+  window.addEventListener('storage', handleStorageChange);
+
   // Envia os dados iniciais para a UI assim que ela começa a escutar.
   const initialData = loadBookings();
-  listener(initialData);
+  listenerCallback(initialData);
 
-  // Retorna a função "unsubscribe" para limpar o listener quando o componente desmontar.
+  // Retorna a função "unsubscribe" para limpar o listener.
   return () => {
-    listener = null;
+    window.removeEventListener('storage', handleStorageChange);
+    listenerCallback = null;
   };
 }
 
 /**
- * Salva um novo agendamento, persiste os dados e notifica a UI sobre a mudança.
+ * Salva um novo agendamento, persistindo os dados e notificando a UI local.
+ * A persistência no localStorage irá acionar o evento 'storage' para outras abas.
  * @param dateString A data no formato 'YYYY-MM-DD'.
  * @param slot O horário, ex: "09:00".
  * @param clientName O nome do cliente.
  */
 export async function saveBooking(dateString: string, slot: string, clientName: string): Promise<void> {
-  // Simula um pequeno atraso, como se estivesse salvando em um servidor.
   await new Promise(resolve => setTimeout(resolve, 1000));
   
   const currentBookings = loadBookings();
@@ -99,11 +105,13 @@ export async function saveBooking(dateString: string, slot: string, clientName: 
     },
   };
 
+  // 1. Escreve no "quadro de avisos". Isso irá notificar as outras abas.
   persistBookings(updatedBookings);
 
-  // Notifica a UI (via listener) que os dados mudaram, para que ela possa re-renderizar.
-  if (listener) {
-    listener(updatedBookings);
+  // 2. Notifica a aba ATUAL sobre a mudança, pois o evento 'storage' não
+  // é disparado na mesma aba que o originou.
+  if (listenerCallback) {
+    listenerCallback(updatedBookings);
   }
 
   console.log(`Agendamento salvo para ${clientName} em ${dateString} às ${slot}`);
